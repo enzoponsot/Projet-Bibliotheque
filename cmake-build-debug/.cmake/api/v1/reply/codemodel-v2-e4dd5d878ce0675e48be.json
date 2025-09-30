@@ -1,0 +1,60 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.26"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "Projet_Biblio",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "Projet_Biblio::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-Projet_Biblio-Debug-157b84a837fcd28cefc9.json",
+					"name" : "Projet_Biblio",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/Users/enzo.ponsot/Library/CloudStorage/OneDrive-GroupeINSEEC(POCE)/ING3/Projet Biblio/cmake-build-debug",
+		"source" : "/Users/enzo.ponsot/Library/CloudStorage/OneDrive-GroupeINSEEC(POCE)/ING3/Projet Biblio"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 5
+	}
+}
