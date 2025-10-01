@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 int main() {
-    char test ='test de la fusion de branche';
+    char test ='test';
     printf("\n");
     return 0;
 }
