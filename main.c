@@ -43,7 +43,7 @@ Utilisateur* menu_connexion(Bibliotheque *bib) {
 
         if (scanf("%d", &choix) != 1) {
             vider_buffer();
-            printf("Entrée invalide.\n");
+            printf("Entree invalide.\n");
             continue;
         }
         vider_buffer();
