@@ -1,0 +1,5 @@
+1\t1984\tGeorge Orwell\t9780451524935\tRoman\t1949\t0\t12
+2\tLe Petit Prince\tAntoine de Saint-Exupéry\t9780156013987\tConte\t1943\t0\t30
+3\tL'Étranger\tAlbert Camus\t9782070360024\tRoman\t1942\t1\t18
+4\tFondation\tIsaac Asimov\t9780553293357\tScience-fiction\t1951\t0\t22
+5\tHarry Potter à l'école des sorciers\tJ.K. Rowling\t9782070643027\tFantasy\t1997\t0\t45
