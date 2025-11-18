@@ -4,10 +4,10 @@
 #include "structure.h"
 
 /* Noms des fichiers de sauvegarde */
-#define FICHIER_LIVRES        "livres.txt"
-#define FICHIER_UTILISATEURS  "utilisateurs.txt"
-#define FICHIER_EMPRUNTS      "emprunts.txt"
-#define FICHIER_CONFIG        "config.txt"
+#define FICHIER_LIVRES        "../livres.txt"
+#define FICHIER_UTILISATEURS  "../utilisateurs.txt"
+#define FICHIER_EMPRUNTS      "../emprunts.txt"
+#define FICHIER_CONFIG        "../config.txt"
 
 /* --------- API par catégorie --------- */
 int sauvegarder_livres(Bibliotheque *bib);

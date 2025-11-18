@@ -1,0 +1,2 @@
+3	Admin	Systeme	ADMIN-0001	admin@bibliotheque.local	admin123	1	0	0.00
+4	PONSOT	Enzo	3	3	12345	0	0	0.00
