@@ -1,10 +1,10 @@
-"C:\Program Files\JetBrains\CLion 2023.2.2\bin\cmake\win\x64\bin\cmake.exe" -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - MinGW Makefiles" -S C:\Users\dmass\CLionProjects\Projet-Bibliotheque -B C:\Users\dmass\CLionProjects\Projet-Bibliotheque\cmake-build-debug
--- The C compiler identification is GNU 6.3.0
+"C:\Users\maxim\AppData\Local\JetBrains\CLion 2023.2.1\bin\cmake\win\x64\bin\cmake.exe" -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_MAKE_PROGRAM=C:/Users/maxim/AppData/Local/JetBrains/CLion 2023.2.1/bin/ninja/win/x64/ninja.exe" -G Ninja -S C:\Users\maxim\OneDrive\Documents\cours_ece_3_annee_semestre_1\Projet-Bibliotheque -B C:\Users\maxim\OneDrive\Documents\cours_ece_3_annee_semestre_1\Projet-Bibliotheque\cmake-build-debug
+-- The C compiler identification is GNU 13.1.0
 -- Detecting C compiler ABI info
 -- Detecting C compiler ABI info - done
--- Check for working C compiler: C:/MinGW/bin/gcc.exe - skipped
+-- Check for working C compiler: C:/Users/maxim/AppData/Local/JetBrains/CLion 2023.2.1/bin/mingw/bin/gcc.exe - skipped
 -- Detecting C compile features
 -- Detecting C compile features - done
--- Configuring done (5.5s)
+-- Configuring done (1.6s)
 -- Generating done (0.0s)
--- Build files have been written to: C:/Users/dmass/CLionProjects/Projet-Bibliotheque/cmake-build-debug
+-- Build files have been written to: C:/Users/maxim/OneDrive/Documents/cours_ece_3_annee_semestre_1/Projet-Bibliotheque/cmake-build-debug

@@ -37,7 +37,7 @@ Utilisateur* menu_connexion(Bibliotheque *bib) {
         printf("   SYSTÈME DE GESTION DE BIBLIOTHÈQUE\n");
         printf("========================================\n");
         printf("1. Se connecter\n");
-        printf("2. Créer un compte utilisateur\n");
+        printf("2. Creer un compte utilisateur\n");
         printf("0. Quitter\n");
         printf("Choix : ");
 

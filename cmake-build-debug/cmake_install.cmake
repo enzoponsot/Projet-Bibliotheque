@@ -1,8 +1,8 @@
-# Install script for directory: C:/Users/dmass/CLionProjects/Projet-Bibliotheque
+# Install script for directory: C:/Users/maxim/OneDrive/Documents/cours_ece_3_annee_semestre_1/Projet-Bibliotheque
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/Projet_Biblio")
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/test")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -34,7 +34,7 @@ endif()
 
 # Set default install directory permissions.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "C:/MinGW/bin/objdump.exe")
+  set(CMAKE_OBJDUMP "C:/Users/maxim/AppData/Local/JetBrains/CLion 2023.2.1/bin/mingw/bin/objdump.exe")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT)
@@ -45,5 +45,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "C:/Users/dmass/CLionProjects/Projet-Bibliotheque/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "C:/Users/maxim/OneDrive/Documents/cours_ece_3_annee_semestre_1/Projet-Bibliotheque/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
