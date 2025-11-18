@@ -8,6 +8,7 @@
 #include "fichiers.h"
 #include "statistiques.h"
 #include "authentification.h"
+#include "ui.h"
 
 /* Fonction pour nettoyer le buffer d'entrée */
 void vider_buffer() {
@@ -623,20 +624,34 @@ int main() {
     creer_admin_par_defaut(&bib);
     sauvegarder_tout(&bib);
 
-    /* Boucle principale */
-    while (1) {
-        utilisateur_connecte = menu_connexion(&bib);
+    /* Choix du mode d'interface */
+    printf("Choisir l'interface :\n");
+    printf("1. Terminal (mode classique)\n");
+    printf("2. Interface graphique (GTK)\n");
+    printf("Choix : ");
+    int mode = 1;
+    if (scanf("%d", &mode) != 1) mode = 1;
+    vider_buffer();
 
-        if (utilisateur_connecte == NULL) {
-            /* L'utilisateur a choisi de quitter */
-            break;
-        }
+    if (mode == 2) {
+        /* Lancer le frontend GTK */
+        run_ui_app(&bib);
+    } else {
+        /* Boucle principale en mode terminal */
+        while (1) {
+            utilisateur_connecte = menu_connexion(&bib);
 
-        /* Rediriger vers le bon menu selon le type d'utilisateur */
-        if (est_admin(utilisateur_connecte)) {
-            menu_admin(&bib, utilisateur_connecte);
-        } else {
-            menu_utilisateur(&bib, utilisateur_connecte);
+            if (utilisateur_connecte == NULL) {
+                /* L'utilisateur a choisi de quitter */
+                break;
+            }
+
+            /* Rediriger vers le bon menu selon le type d'utilisateur */
+            if (est_admin(utilisateur_connecte)) {
+                menu_admin(&bib, utilisateur_connecte);
+            } else {
+                menu_utilisateur(&bib, utilisateur_connecte);
+            }
         }
     }
 
