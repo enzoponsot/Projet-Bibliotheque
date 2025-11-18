@@ -1,0 +1,33 @@
+# Ignore CLion / JetBrains project files
+.idea/
+*.iml
+
+# CMake and build directories
+cmake-build-debug/
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+Testing/
+
+# Compiled objects and executables
+*.o
+*.obj
+*.exe
+*.out
+
+# Project executable (CMake target)
+test
+
+# Editors
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
