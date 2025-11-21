@@ -11,11 +11,14 @@
 #include "emprunts.h"
 #include "statistiques.h"
 
-// Keep a pointer to the main data
-static Bibliotheque *g_bib = NULL;
+// Keep a pointer to the main data (exported so views/helpers can use it)
+Bibliotheque *g_bib = NULL;
 static Utilisateur *g_user = NULL;
 /* keep last logged user in RAM for auto-login during this process lifetime */
 static Utilisateur *g_last_user = NULL;
+
+/* Global pointer to main context (stored as void* here to avoid early typedef issues) */
+static void *g_main_ctx = NULL;
 
 // Persist last logged user id across runs (simple file in repo root)
 static void save_last_user_id(int id) {
@@ -60,253 +63,10 @@ static void show_info(GtkWindow *parent, const char *msg) {
     gtk_widget_destroy(dlg);
 }
 
-// Books list model: create and fill a GtkListStore
-static GtkWidget* create_books_view() {
-    GtkListStore *store = gtk_list_store_new(5, G_TYPE_INT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
-    for (int i = 0; i < g_bib->nombre_livres; ++i) {
-        Livre *L = &g_bib->livres[i];
-        GtkTreeIter iter;
-        gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter,
-                           0, L->id,
-                           1, L->titre,
-                           2, L->auteur,
-                           3, L->categorie,
-                           4, L->annee,
-                           -1);
-    }
-
-    GtkWidget *view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
-    GtkCellRenderer *r;
-    GtkTreeViewColumn *c;
-
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID", r, "text", 0, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Titre", r, "text", 1, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Auteur", r, "text", 2, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Catégorie", r, "text", 3, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Année", r, "text", 4, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-
-    return view;
-}
-
-// Users list model
-static GtkWidget* create_users_view() {
-    GtkListStore *store = gtk_list_store_new(7, G_TYPE_INT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT, G_TYPE_DOUBLE);
-    for (int i = 0; i < g_bib->nombre_utilisateurs; ++i) {
-        Utilisateur *U = &g_bib->utilisateurs[i];
-        GtkTreeIter iter;
-        gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter,
-                           0, U->id,
-                           1, U->nom,
-                           2, U->prenom,
-                           3, U->id_etudiant,
-                           4, U->email,
-                           5, U->nombre_emprunts_actifs,
-                           6, U->penalites,
-                           -1);
-    }
-
-    GtkWidget *view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
-    GtkCellRenderer *r; GtkTreeViewColumn *c;
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID", r, "text", 0, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Nom", r, "text", 1, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Prénom", r, "text", 2, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID étudiant", r, "text", 3, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Email", r, "text", 4, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Emprunts actifs", r, "text", 5, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Pénalités (€)", r, "text", 6, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-
-    return view;
-}
-
-static void refresh_users_container(GtkWidget *container) {
-    GList *children = gtk_container_get_children(GTK_CONTAINER(container));
-    for (GList *l = children; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(children);
-
-    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
-    GtkWidget *view = create_users_view();
-    gtk_container_add(GTK_CONTAINER(scrolled), view);
-    gtk_widget_set_vexpand(scrolled, TRUE);
-    gtk_container_add(GTK_CONTAINER(container), scrolled);
-    gtk_widget_show_all(container);
-}
-
-// Emprunts view (active emprunts)
-static GtkWidget* create_emprunts_view() {
-    GtkListStore *store = gtk_list_store_new(6, G_TYPE_INT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_DOUBLE);
-    for (int i = 0; i < g_bib->nombre_emprunts; ++i) {
-        Emprunt *E = &g_bib->emprunts[i];
-        if (E->date_retour_effectif != 0) continue; // skip returned
-        Livre *L = rechercher_livre_par_id(g_bib, E->id_livre);
-        Utilisateur *U = rechercher_utilisateur_par_id(g_bib, E->id_utilisateur);
-        char buf_date[64];
-        struct tm tmv;
-        localtime_r(&E->date_emprunt, &tmv);
-        strftime(buf_date, sizeof(buf_date), "%Y-%m-%d", &tmv);
-        GtkTreeIter iter;
-        gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter,
-                           0, E->id,
-                           1, L ? L->titre : "(livre supprimé)",
-                           2, U ? U->prenom : "(utilisateur)",
-                           3, U ? U->nom : "",
-                           4, buf_date,
-                           5, E->penalite,
-                           -1);
-    }
-
-    GtkWidget *view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
-    GtkCellRenderer *r; GtkTreeViewColumn *c;
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID", r, "text", 0, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Livre", r, "text", 1, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Prénom", r, "text", 2, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Nom", r, "text", 3, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Date emprunt", r, "text", 4, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Pénalité (€)", r, "text", 5, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-
-    return view;
-}
-
-static void refresh_emprunts_container(GtkWidget *container) {
-    GList *children = gtk_container_get_children(GTK_CONTAINER(container));
-    for (GList *l = children; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(children);
-
-    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
-    GtkWidget *view = create_emprunts_view();
-    gtk_container_add(GTK_CONTAINER(scrolled), view);
-    gtk_widget_set_vexpand(scrolled, TRUE);
-    gtk_container_add(GTK_CONTAINER(container), scrolled);
-    gtk_widget_show_all(container);
-}
-static GtkWidget* create_current_loans_view(int id_utilisateur); /* forward */
-
-// Refresh current user's loans container
-static void refresh_current_container(GtkWidget *container, int id_utilisateur) {
-    GList *children = gtk_container_get_children(GTK_CONTAINER(container));
-    for (GList *l = children; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(children);
-
-    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
-    GtkWidget *view = create_current_loans_view(id_utilisateur);
-    gtk_container_add(GTK_CONTAINER(scrolled), view);
-    gtk_widget_set_vexpand(scrolled, TRUE);
-    gtk_container_add(GTK_CONTAINER(container), scrolled);
-    gtk_widget_show_all(container);
-}
-
-// Statistics simple summary (uses data in Bibliotheque)
-static void build_stats_into_container(GtkWidget *container) {
-    GList *children = gtk_container_get_children(GTK_CONTAINER(container));
-    for (GList *l = children; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(children);
-
-    char buf[256];
-    GtkWidget *v = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    snprintf(buf, sizeof(buf), "Livres: %d", g_bib->nombre_livres);
-    gtk_box_pack_start(GTK_BOX(v), gtk_label_new(buf), FALSE, FALSE, 4);
-    snprintf(buf, sizeof(buf), "Utilisateurs: %d", g_bib->nombre_utilisateurs);
-    gtk_box_pack_start(GTK_BOX(v), gtk_label_new(buf), FALSE, FALSE, 4);
-    snprintf(buf, sizeof(buf), "Emprunts (total): %d", g_bib->nombre_emprunts);
-    gtk_box_pack_start(GTK_BOX(v), gtk_label_new(buf), FALSE, FALSE, 4);
-
-    // Count active emprunts and en retard
-    int active = 0, en_retard = 0;
-    time_t now = time(NULL);
-    for (int i = 0; i < g_bib->nombre_emprunts; ++i) {
-        Emprunt *E = &g_bib->emprunts[i];
-        if (E->date_retour_effectif == 0) {
-            active++;
-            if (difftime(now, E->date_retour_prevue) > 0) en_retard++;
-        }
-    }
-    snprintf(buf, sizeof(buf), "Emprunts actifs: %d", active);
-    gtk_box_pack_start(GTK_BOX(v), gtk_label_new(buf), FALSE, FALSE, 4);
-    snprintf(buf, sizeof(buf), "Emprunts en retard: %d", en_retard);
-    gtk_box_pack_start(GTK_BOX(v), gtk_label_new(buf), FALSE, FALSE, 4);
-
-    gtk_container_add(GTK_CONTAINER(container), v);
-    gtk_widget_show_all(container);
-}
-
-// Search results view
-static GtkWidget* create_search_results_view(const char *titre, const char *auteur, const char *categorie) {
-    Livre *resultats[MAX_LIVRES];
-    int n = rechercher_livres_multi_criteres(g_bib, titre && *titre ? titre : NULL, auteur && *auteur ? auteur : NULL, categorie && *categorie ? categorie : NULL, resultats, MAX_LIVRES);
-    GtkListStore *store = gtk_list_store_new(5, G_TYPE_INT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
-    for (int i = 0; i < n; ++i) {
-        Livre *L = resultats[i];
-        GtkTreeIter iter; gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter, 0, L->id, 1, L->titre, 2, L->auteur, 3, L->categorie, 4, L->annee, -1);
-    }
-    GtkWidget *view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
-    GtkCellRenderer *r; GtkTreeViewColumn *c;
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID", r, "text", 0, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Titre", r, "text", 1, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Auteur", r, "text", 2, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Catégorie", r, "text", 3, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Année", r, "text", 4, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    return view;
-}
-
-// User history view (all emprunts for a user)
-static GtkWidget* create_user_history_view(int id_utilisateur) {
-    GtkListStore *store = gtk_list_store_new(7, G_TYPE_INT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_DOUBLE);
-    for (int i = 0; i < g_bib->nombre_emprunts; ++i) {
-        Emprunt *E = &g_bib->emprunts[i];
-        if (E->id_utilisateur != id_utilisateur) continue;
-        Livre *L = rechercher_livre_par_id(g_bib, E->id_livre);
-        char date_emp[32] = ""; char date_ret[32] = "(non rendu)";
-        struct tm tmv;
-        localtime_r(&E->date_emprunt, &tmv); strftime(date_emp, sizeof(date_emp), "%Y-%m-%d", &tmv);
-        if (E->date_retour_effectif != 0) { localtime_r(&E->date_retour_effectif, &tmv); strftime(date_ret, sizeof(date_ret), "%Y-%m-%d", &tmv); }
-        GtkTreeIter iter; gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter,
-                           0, E->id,
-                           1, L ? L->titre : "(supprimé)",
-                           2, date_emp,
-                           3, date_ret,
-                           4, E->est_en_retard ? "Oui" : "Non",
-                           5, "",
-                           6, E->penalite,
-                           -1);
-    }
-    GtkWidget *view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
-    GtkCellRenderer *r; GtkTreeViewColumn *c;
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID", r, "text", 0, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Livre", r, "text", 1, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Date emprunt", r, "text", 2, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Date retour", r, "text", 3, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("En retard", r, "text", 4, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("", r, "text", 5, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Pénalité (€)", r, "text", 6, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    return view;
-}
-
-// Current loans for a user
-static GtkWidget* create_current_loans_view(int id_utilisateur) {
-    GtkListStore *store = gtk_list_store_new(6, G_TYPE_INT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_DOUBLE);
-    for (int i = 0; i < g_bib->nombre_emprunts; ++i) {
-        Emprunt *E = &g_bib->emprunts[i];
-        if (E->id_utilisateur != id_utilisateur) continue;
-        if (E->date_retour_effectif != 0) continue;
-        Livre *L = rechercher_livre_par_id(g_bib, E->id_livre);
-        char date_emp[32] = ""; struct tm tmv; localtime_r(&E->date_emprunt, &tmv); strftime(date_emp, sizeof(date_emp), "%Y-%m-%d", &tmv);
-        GtkTreeIter iter; gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter, 0, E->id, 1, L ? L->titre : "(supprimé)", 2, date_emp, 3, "", 4, "", 5, E->penalite, -1);
-    }
-    GtkWidget *view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
-    GtkCellRenderer *r; GtkTreeViewColumn *c;
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("ID", r, "text", 0, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Livre", r, "text", 1, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Date emprunt", r, "text", 2, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("", r, "text", 3, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("", r, "text", 4, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    r = gtk_cell_renderer_text_new(); c = gtk_tree_view_column_new_with_attributes("Pénalité (€)", r, "text", 5, NULL); gtk_tree_view_append_column(GTK_TREE_VIEW(view), c);
-    return view;
-}
+// Utility: clear all children of a container
+/* helpers moved to ui_helpers.{c,h} */
+#include "ui_helpers.h"
+#include "ui_views.h"
 
 // Change password dialog
 static void on_change_password(GtkButton *btn, gpointer data) {
@@ -379,23 +139,70 @@ static void on_create_account(GtkButton *btn, gpointer data) {
 }
 
 
-// Refresh children of a container that holds the books view
-static void refresh_books_container(GtkWidget *container) {
-    GList *children = gtk_container_get_children(GTK_CONTAINER(container));
-    for (GList *l = children; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(children);
-
-    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
-    GtkWidget *view = create_books_view();
-    gtk_container_add(GTK_CONTAINER(scrolled), view);
-    gtk_widget_set_vexpand(scrolled, TRUE);
-    gtk_container_add(GTK_CONTAINER(container), scrolled);
-    gtk_widget_show_all(container);
-}
+/* refresh_books_container moved to ui_views.c */
 
 // Dialog to add a book
+// Context for book area so we can reconnect buttons after refresh
+typedef struct {
+    GtkWidget *books_list_container;
+    GtkWidget *btn_edit;
+    GtkWidget *btn_del;
+    GtkWidget *btn_borrow;
+    guint sel_handler_id;
+} BooksCtx;
+
+/* Forward declarations for callbacks used when reconnecting signals */
+static void on_edit_book(GtkButton *btn, gpointer data);
+static void on_delete_book(GtkButton *btn, gpointer data);
+static void on_borrow_book(GtkButton *btn, gpointer data);
+static void on_books_selection_changed(GtkTreeSelection *selection, gpointer user_data);
+
+static void connect_books_buttons(BooksCtx *ctx) {
+    if (!ctx || !ctx->books_list_container) return;
+    // find current tree view inside the container
+    GtkWidget *books_tree = NULL;
+    GList *children = gtk_container_get_children(GTK_CONTAINER(ctx->books_list_container));
+    for (GList *l = children; l != NULL; l = l->next) {
+        if (GTK_IS_SCROLLED_WINDOW(l->data)) {
+            GList *c2 = gtk_container_get_children(GTK_CONTAINER(l->data));
+            if (c2 && GTK_IS_TREE_VIEW(c2->data)) books_tree = GTK_WIDGET(c2->data);
+            g_list_free(c2);
+        }
+    }
+    g_list_free(children);
+
+    // Disconnect previous handlers to avoid duplicates (match by function)
+    if (ctx->btn_edit) g_signal_handlers_disconnect_matched(G_OBJECT(ctx->btn_edit), G_SIGNAL_MATCH_FUNC, 0, 0, NULL, (gpointer)on_edit_book, NULL);
+    if (ctx->btn_del) g_signal_handlers_disconnect_matched(G_OBJECT(ctx->btn_del), G_SIGNAL_MATCH_FUNC, 0, 0, NULL, (gpointer)on_delete_book, NULL);
+    if (ctx->btn_borrow) g_signal_handlers_disconnect_matched(G_OBJECT(ctx->btn_borrow), G_SIGNAL_MATCH_FUNC, 0, 0, NULL, (gpointer)on_borrow_book, NULL);
+
+    if (books_tree) {
+        if (ctx->btn_edit) g_signal_connect(ctx->btn_edit, "clicked", G_CALLBACK(on_edit_book), books_tree);
+        if (ctx->btn_del) g_signal_connect(ctx->btn_del, "clicked", G_CALLBACK(on_delete_book), books_tree);
+        if (ctx->btn_borrow) g_signal_connect(ctx->btn_borrow, "clicked", G_CALLBACK(on_borrow_book), books_tree);
+
+        /* Connect selection-changed to enable/disable borrow button depending on book status */
+        GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(books_tree));
+        if (ctx->sel_handler_id) {
+            g_signal_handler_disconnect(G_OBJECT(sel), ctx->sel_handler_id);
+            ctx->sel_handler_id = 0;
+        }
+        if (ctx->btn_borrow) {
+            ctx->sel_handler_id = g_signal_connect(sel, "changed", G_CALLBACK(on_books_selection_changed), ctx);
+            /* Trigger once to set initial sensitivity */
+            on_books_selection_changed(sel, ctx);
+        }
+    }
+}
+
+/* Forward declarations for callbacks used when reconnecting signals */
+static void on_edit_book(GtkButton *btn, gpointer data);
+static void on_delete_book(GtkButton *btn, gpointer data);
+static void on_borrow_book(GtkButton *btn, gpointer data);
+
 static void on_add_book(GtkButton *btn, gpointer data) {
-    GtkWindow *parent = GTK_WINDOW(data);
+    BooksCtx *bctx = (BooksCtx *)data;
+    GtkWindow *parent = GTK_WINDOW(gtk_widget_get_toplevel(bctx->books_list_container));
     GtkWidget *dialog = gtk_dialog_new_with_buttons("Ajouter un livre", parent, GTK_DIALOG_MODAL, "Ajouter", GTK_RESPONSE_OK, "Annuler", GTK_RESPONSE_CANCEL, NULL);
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
     GtkWidget *grid = gtk_grid_new(); gtk_container_add(GTK_CONTAINER(content), grid);
@@ -417,9 +224,13 @@ static void on_add_book(GtkButton *btn, gpointer data) {
         int annee = atoi(gtk_entry_get_text(GTK_ENTRY(e_annee)));
         if (ajouter_livre(g_bib, titre, auteur, isbn, categorie, annee)) {
             sauvegarder_tout(g_bib);
-            show_info(parent, "Livre ajouté avec succès.");
+            show_info(GTK_WINDOW(parent), "Livre ajouté avec succès.");
+            // Refresh the books list container so the new book appears immediately
+            if (bctx && bctx->books_list_container) refresh_books_container(bctx->books_list_container);
+            // Reconnect action buttons to the new tree view
+            connect_books_buttons(bctx);
         } else {
-            show_info(parent, "Erreur lors de l'ajout du livre.");
+            show_info(GTK_WINDOW(parent), "Erreur lors de l'ajout du livre.");
         }
     }
     gtk_widget_destroy(dialog);
@@ -665,55 +476,38 @@ static void on_borrow_book(GtkButton *btn, gpointer data) {
     gtk_widget_destroy(dialog);
 }
 
-// Return selected book (rendre)
-static void on_return_book(GtkButton *btn, gpointer data) {
-    GtkWidget *tree = GTK_WIDGET(data);
-    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(tree));
+/* Selection changed handler for books tree: enable borrow only if selected book is available */
+static void on_books_selection_changed(GtkTreeSelection *selection, gpointer user_data) {
+    BooksCtx *ctx = (BooksCtx *)user_data;
+    if (!ctx || !ctx->btn_borrow) return;
     GtkTreeModel *model; GtkTreeIter iter;
-    if (!gtk_tree_selection_get_selected(sel, &model, &iter)) { show_info(NULL, "Aucun livre sélectionné."); return; }
-    int id_livre; gtk_tree_model_get(model, &iter, 0, &id_livre, -1);
-    GtkWindow *parent = GTK_WINDOW(gtk_widget_get_toplevel(tree));
-    int id_user = g_user ? g_user->id : -1;
-    if (id_user != -1) {
-        if (enregistrer_retour(g_bib, id_livre, id_user)) {
-            sauvegarder_tout(g_bib);
-            show_info(parent, "Retour enregistré pour l'utilisateur connecté.");
-            GtkWidget *parent_container = gtk_widget_get_parent(gtk_widget_get_parent(tree));
-            refresh_books_container(parent_container);
-        } else {
-            show_info(parent, "Erreur lors de l'enregistrement du retour.");
-        }
-        return;
-    }
-    /* fallback: ask for user id */
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("Enregistrer retour (par livre)", parent, GTK_DIALOG_MODAL, "Enregistrer", GTK_RESPONSE_OK, "Annuler", GTK_RESPONSE_CANCEL, NULL);
-    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog)); GtkWidget *grid = gtk_grid_new(); gtk_container_add(GTK_CONTAINER(content), grid);
-    GtkWidget *e_user = gtk_entry_new();
-    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("ID utilisateur:"), 0,0,1,1); gtk_grid_attach(GTK_GRID(grid), e_user, 1,0,1,1);
-    gtk_widget_show_all(dialog);
-    int resp = gtk_dialog_run(GTK_DIALOG(dialog));
-    if (resp == GTK_RESPONSE_OK) {
-        int id_user_entered = atoi(gtk_entry_get_text(GTK_ENTRY(e_user)));
-        if (enregistrer_retour(g_bib, id_livre, id_user_entered)) {
-            sauvegarder_tout(g_bib);
-            show_info(parent, "Retour enregistré.");
-            GtkWidget *parent_container = gtk_widget_get_parent(gtk_widget_get_parent(tree));
-            refresh_books_container(parent_container);
-        } else {
-            show_info(parent, "Erreur lors de l'enregistrement du retour.");
-        }
-    }
-    gtk_widget_destroy(dialog);
+    gboolean has = gtk_tree_selection_get_selected(selection, &model, &iter);
+    if (!has) { gtk_widget_set_sensitive(ctx->btn_borrow, FALSE); return; }
+
+    int id_livre = -1;
+    gtk_tree_model_get(model, &iter, 0, &id_livre, -1);
+    Livre *L = rechercher_livre_par_id(g_bib, id_livre);
+    if (!L) { gtk_widget_set_sensitive(ctx->btn_borrow, FALSE); return; }
+
+    gtk_widget_set_sensitive(ctx->btn_borrow, L->statut != EMPRUNTE);
 }
+
+// Return selected book (rendre)
+static void on_return_book(GtkButton *btn, gpointer data);
 
 // Build main window after login
 // Build the main content inside the provided container (this will be the "main_page" of the stack).
-typedef struct {
+typedef struct MainCtx {
     GtkWidget *main_container;
     GtkWidget *notebook;
     GtkWidget *search_box;
     GtkWidget *histo_box;
     GtkWidget *current_box;
+    GtkWidget *current_list_container;
+    GtkWidget *btn_m_borrow;
+    GtkWidget *btn_m_return;
+    /* keep a reference to the books context so other callbacks can refresh the list */
+    BooksCtx *books_ctx;
 } MainCtx;
 
 static void on_search_button_cb(GtkButton *b, gpointer ud) {
@@ -767,15 +561,49 @@ static void on_show_history_cb(GtkButton *b, gpointer ud) {
 static void on_show_current_cb(GtkButton *b, gpointer ud) {
     (void)b;
     MainCtx *ctx = (MainCtx *)ud;
-    GList *kids = gtk_container_get_children(GTK_CONTAINER(ctx->current_box));
-    for (GList *l = kids; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(kids);
-    GtkWidget *view = create_current_loans_view(g_user->id);
-    GtkWidget *sc = gtk_scrolled_window_new(NULL, NULL);
-    gtk_container_add(GTK_CONTAINER(sc), view);
-    gtk_widget_set_vexpand(sc, TRUE);
-    gtk_container_add(GTK_CONTAINER(ctx->current_box), sc);
-    gtk_widget_show_all(ctx->current_box);
+    if (!ctx) return;
+    // Only refresh the dedicated list container so we don't remove the control bar
+    if (!ctx->current_list_container) {
+        // fallback: rebuild whole content
+        GList *kids = gtk_container_get_children(GTK_CONTAINER(ctx->current_box));
+        for (GList *l = kids; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
+        g_list_free(kids);
+        GtkWidget *view = create_current_loans_view(g_user->id);
+        GtkWidget *sc = gtk_scrolled_window_new(NULL, NULL);
+        gtk_container_add(GTK_CONTAINER(sc), view);
+        gtk_widget_set_vexpand(sc, TRUE);
+        gtk_container_add(GTK_CONTAINER(ctx->current_box), sc);
+        gtk_widget_show_all(ctx->current_box);
+    } else {
+        // Clear only the list container
+        GList *kids = gtk_container_get_children(GTK_CONTAINER(ctx->current_list_container));
+        for (GList *l = kids; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
+        g_list_free(kids);
+        GtkWidget *view = create_current_loans_view(g_user->id);
+        GtkWidget *sc = gtk_scrolled_window_new(NULL, NULL);
+        gtk_container_add(GTK_CONTAINER(sc), view);
+        gtk_widget_set_vexpand(sc, TRUE);
+        gtk_container_add(GTK_CONTAINER(ctx->current_list_container), sc);
+        gtk_widget_show_all(ctx->current_list_container);
+
+        // Reconnect action buttons to the new tree view
+        GtkWidget *current_tree = NULL;
+        GList *kids2 = gtk_container_get_children(GTK_CONTAINER(ctx->current_list_container));
+        for (GList *l = kids2; l != NULL; l = l->next) {
+            if (GTK_IS_SCROLLED_WINDOW(l->data)) {
+                GList *c2 = gtk_container_get_children(GTK_CONTAINER(l->data));
+                if (c2 && GTK_IS_TREE_VIEW(c2->data)) current_tree = GTK_WIDGET(c2->data);
+                g_list_free(c2);
+            }
+        }
+        g_list_free(kids2);
+        if (current_tree) {
+            if (ctx->btn_m_return) g_signal_handlers_disconnect_matched(G_OBJECT(ctx->btn_m_return), G_SIGNAL_MATCH_FUNC, 0, 0, NULL, (gpointer)on_return_book, NULL);
+            if (ctx->btn_m_borrow) g_signal_handlers_disconnect_matched(G_OBJECT(ctx->btn_m_borrow), G_SIGNAL_MATCH_FUNC, 0, 0, NULL, (gpointer)on_borrow_book, NULL);
+            if (ctx->btn_m_return) g_signal_connect(ctx->btn_m_return, "clicked", G_CALLBACK(on_return_book), current_tree);
+            if (ctx->btn_m_borrow) g_signal_connect(ctx->btn_m_borrow, "clicked", G_CALLBACK(on_borrow_book), current_tree);
+        }
+    }
     gtk_notebook_set_current_page(GTK_NOTEBOOK(ctx->notebook), 3);
 }
 
@@ -808,12 +636,14 @@ static void build_main_content(GtkWidget *main_container) {
 
     GtkWidget *lbl_title = gtk_label_new("SYSTÈME DE GESTION - Bibliothèque");
     gtk_box_pack_start(GTK_BOX(nav), lbl_title, FALSE, FALSE, 6);
+    gtk_style_context_add_class(gtk_widget_get_style_context(lbl_title), "nav-title");
 
     char userinfo[256]; snprintf(userinfo, sizeof(userinfo), "%s %s\nEmprunts actifs: %d\nPénalités: %.2f €",
                                  g_user->prenom, g_user->nom, g_user->nombre_emprunts_actifs, g_user->penalites);
     GtkWidget *lbl_user = gtk_label_new(userinfo);
     gtk_label_set_xalign(GTK_LABEL(lbl_user), 0.0);
     gtk_box_pack_start(GTK_BOX(nav), lbl_user, FALSE, FALSE, 6);
+    gtk_style_context_add_class(gtk_widget_get_style_context(lbl_user), "user-info");
 
     GtkWidget *btn_catalogue = gtk_button_new_with_label("Consulter le catalogue"); gtk_box_pack_start(GTK_BOX(nav), btn_catalogue, FALSE, FALSE, 4);
     GtkWidget *btn_recherche = gtk_button_new_with_label("Rechercher un livre"); gtk_box_pack_start(GTK_BOX(nav), btn_recherche, FALSE, FALSE, 4);
@@ -822,6 +652,14 @@ static void build_main_content(GtkWidget *main_container) {
     GtkWidget *btn_pw = gtk_button_new_with_label("Modifier mon mot de passe"); gtk_box_pack_start(GTK_BOX(nav), btn_pw, FALSE, FALSE, 4);
     GtkWidget *btn_pay = gtk_button_new_with_label("Payer mes pénalités"); gtk_box_pack_start(GTK_BOX(nav), btn_pay, FALSE, FALSE, 4);
     GtkWidget *btn_logout = gtk_button_new_with_label("Se déconnecter"); gtk_box_pack_end(GTK_BOX(nav), btn_logout, FALSE, FALSE, 6);
+    /* nav button style class */
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_catalogue), "nav-button");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_recherche), "nav-button");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_histo), "nav-button");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_current), "nav-button");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_pw), "nav-button");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_pay), "nav-button");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn_logout), "nav-button");
 
     gtk_box_set_homogeneous(GTK_BOX(right), FALSE);
     GtkWidget *action_bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
@@ -833,6 +671,7 @@ static void build_main_content(GtkWidget *main_container) {
     GtkWidget *page_title = gtk_label_new("Catalogue");
     gtk_widget_set_halign(page_title, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(right), page_title, FALSE, FALSE, 4);
+    gtk_style_context_add_class(gtk_widget_get_style_context(page_title), "page-title");
 
     GtkWidget *notebook = gtk_notebook_new();
     /* hide tab headers — navigation comes from the left menu; update title via switch-page */
@@ -848,12 +687,10 @@ static void build_main_content(GtkWidget *main_container) {
     GtkWidget *btn_b_edit = gtk_button_new_with_label("Modifier livre");
     GtkWidget *btn_b_del = gtk_button_new_with_label("Supprimer livre");
     GtkWidget *btn_b_borrow = gtk_button_new_with_label("Emprunter");
-    GtkWidget *btn_b_return = gtk_button_new_with_label("Rendre");
     gtk_box_pack_start(GTK_BOX(books_ctrl), btn_b_add, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(books_ctrl), btn_b_edit, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(books_ctrl), btn_b_del, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(books_ctrl), btn_b_borrow, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(books_ctrl), btn_b_return, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(books_box), books_ctrl, FALSE, FALSE, 6);
 
     /* Dedicated container for the books list so refresh doesn't remove controls */
@@ -862,29 +699,17 @@ static void build_main_content(GtkWidget *main_container) {
     gtk_box_pack_start(GTK_BOX(books_box), books_list_container, TRUE, TRUE, 6);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), books_box, gtk_label_new("Catalogue"));
 
-    /* Try to find the tree view inside books_list_container to connect the buttons */
-    GtkWidget *books_tree = NULL;
-    GList *children = gtk_container_get_children(GTK_CONTAINER(books_list_container));
-    for (GList *l = children; l != NULL; l = l->next) {
-        if (GTK_IS_SCROLLED_WINDOW(l->data)) {
-            GList *c2 = gtk_container_get_children(GTK_CONTAINER(l->data));
-            if (c2 && GTK_IS_TREE_VIEW(c2->data)) {
-                books_tree = GTK_WIDGET(c2->data);
-            }
-            g_list_free(c2);
-        }
-    }
-    g_list_free(children);
-    if (books_tree) {
-        g_signal_connect(btn_b_add, "clicked", G_CALLBACK(on_add_book), gtk_widget_get_toplevel(books_box));
-        g_signal_connect(btn_b_edit, "clicked", G_CALLBACK(on_edit_book), books_tree);
-        g_signal_connect(btn_b_del, "clicked", G_CALLBACK(on_delete_book), books_tree);
-        g_signal_connect(btn_b_borrow, "clicked", G_CALLBACK(on_borrow_book), books_tree);
-        g_signal_connect(btn_b_return, "clicked", G_CALLBACK(on_return_book), books_tree);
-    } else {
-        /* fallback: connect add only */
-        g_signal_connect(btn_b_add, "clicked", G_CALLBACK(on_add_book), gtk_widget_get_toplevel(books_box));
-    }
+    /* Prepare BooksCtx so add can refresh and we can reconnect action buttons */
+    BooksCtx *bctx = g_malloc0(sizeof(BooksCtx));
+    bctx->books_list_container = books_list_container;
+    bctx->btn_edit = btn_b_edit;
+    bctx->btn_del = btn_b_del;
+    bctx->btn_borrow = btn_b_borrow;
+
+    /* Connect add using bctx so the list refreshes after adding */
+    g_signal_connect(btn_b_add, "clicked", G_CALLBACK(on_add_book), bctx);
+    /* Connect other buttons to the current tree (or reconnect inside connect_books_buttons) */
+    connect_books_buttons(bctx);
 
     GtkWidget *search_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_box_pack_start(GTK_BOX(search_box), gtk_label_new("Utilisez 'Rechercher un livre' dans le menu pour lancer une recherche."), FALSE, FALSE, 6);
@@ -918,6 +743,12 @@ static void build_main_content(GtkWidget *main_container) {
     ctx->search_box = search_box;
     ctx->histo_box = histo_box;
     ctx->current_box = current_box;
+    ctx->current_list_container = current_list_container;
+    ctx->btn_m_borrow = btn_m_borrow;
+    ctx->btn_m_return = btn_m_return;
+    g_main_ctx = ctx;
+    /* store books context so other handlers can refresh the catalogue */
+    ctx->books_ctx = bctx;
 
     // Connect nav buttons
     PageSwitch *ps_cat = g_malloc(sizeof(PageSwitch)); ps_cat->nb = GTK_NOTEBOOK(notebook); ps_cat->idx = 0;
@@ -951,6 +782,86 @@ static void build_main_content(GtkWidget *main_container) {
     gtk_widget_show_all(main_container);
 }
 
+// Implementation of on_return_book moved here so MainCtx is defined
+static void on_return_book(GtkButton *btn, gpointer data) {
+    GtkWidget *tree = GTK_WIDGET(data);
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(tree));
+    GtkTreeModel *model; GtkTreeIter iter;
+    if (!gtk_tree_selection_get_selected(sel, &model, &iter)) { show_info(NULL, "Aucun livre sélectionné."); return; }
+
+    /* The first column may hold either a book id or an emprunt id depending on the view.
+       Try to interpret it first as a book id; if not found, treat it as an emprunt id. */
+    int col0; gtk_tree_model_get(model, &iter, 0, &col0, -1);
+    int id_livre = -1, id_user = g_user ? g_user->id : -1;
+
+    if (rechercher_livre_par_id(g_bib, col0)) {
+        /* column contains a livre id */
+        id_livre = col0;
+    } else {
+        /* try as emprunt id */
+        Emprunt *e = rechercher_emprunt_par_id(g_bib, col0);
+        if (e) {
+            id_livre = e->id_livre;
+            /* if no user logged, use emprunt's user */
+            if (id_user == -1) id_user = e->id_utilisateur;
+        } else {
+            show_info(NULL, "Impossible d'identifier l'emprunt/livre sélectionné.");
+            return;
+        }
+    }
+
+    GtkWindow *parent = GTK_WINDOW(gtk_widget_get_toplevel(tree));
+
+    if (id_user != -1) {
+        if (enregistrer_retour(g_bib, id_livre, id_user)) {
+            sauvegarder_tout(g_bib);
+            show_info(parent, "Retour enregistré pour l'utilisateur connecté.");
+            /* Refresh current loans view if available */
+            if (g_main_ctx && ((MainCtx*)g_main_ctx)->current_list_container) {
+                refresh_current_container(((MainCtx*)g_main_ctx)->current_list_container, g_user ? g_user->id : -1);
+                    /* Also refresh the catalogue books list so statut column updates */
+                    if (g_main_ctx && ((MainCtx*)g_main_ctx)->books_ctx && ((MainCtx*)g_main_ctx)->books_ctx->books_list_container) {
+                        refresh_books_container(((MainCtx*)g_main_ctx)->books_ctx->books_list_container);
+                    }
+            } else {
+                GtkWidget *parent_container = gtk_widget_get_parent(gtk_widget_get_parent(tree));
+                refresh_books_container(parent_container);
+            }
+        } else {
+            show_info(parent, "Erreur lors de l'enregistrement du retour.");
+        }
+        return;
+    }
+
+    /* fallback: ask for user id */
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Enregistrer retour (par livre)", parent, GTK_DIALOG_MODAL, "Enregistrer", GTK_RESPONSE_OK, "Annuler", GTK_RESPONSE_CANCEL, NULL);
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog)); GtkWidget *grid = gtk_grid_new(); gtk_container_add(GTK_CONTAINER(content), grid);
+    GtkWidget *e_user = gtk_entry_new();
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("ID utilisateur:"), 0,0,1,1); gtk_grid_attach(GTK_GRID(grid), e_user, 1,0,1,1);
+    gtk_widget_show_all(dialog);
+    int resp = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (resp == GTK_RESPONSE_OK) {
+        int id_user_entered = atoi(gtk_entry_get_text(GTK_ENTRY(e_user)));
+        if (enregistrer_retour(g_bib, id_livre, id_user_entered)) {
+            sauvegarder_tout(g_bib);
+            show_info(parent, "Retour enregistré.");
+                if (g_main_ctx && ((MainCtx*)g_main_ctx)->current_list_container) {
+                    refresh_current_container(((MainCtx*)g_main_ctx)->current_list_container, g_user ? g_user->id : -1);
+                }
+                /* Refresh catalogue as well so the Statut is updated */
+                if (g_main_ctx && ((MainCtx*)g_main_ctx)->books_ctx && ((MainCtx*)g_main_ctx)->books_ctx->books_list_container) {
+                    refresh_books_container(((MainCtx*)g_main_ctx)->books_ctx->books_list_container);
+                } else {
+                    GtkWidget *parent_container = gtk_widget_get_parent(gtk_widget_get_parent(tree));
+                    refresh_books_container(parent_container);
+                }
+        } else {
+            show_info(parent, "Erreur lors de l'enregistrement du retour.");
+        }
+    }
+    gtk_widget_destroy(dialog);
+}
+
 // Login window handler
 // Structure passed to the login callback
 struct LoginContext { GtkStack *stack; GtkEntry *e_email; GtkEntry *e_pass; GtkWidget *main_page; };
@@ -981,6 +892,32 @@ void run_ui_app(Bibliotheque *bib) {
     int argc = 0; char **argv = NULL;
     gtk_init(&argc, &argv);
 
+    /* Load application CSS (minimalist modern theme) if available.
+       Try several likely locations so running from `build/` or project root works. */
+    {
+        const char *candidates[] = { "ui.css", "../ui.css", "resources/ui.css", NULL };
+        GtkCssProvider *provider = gtk_css_provider_new();
+        GError *err = NULL;
+        int loaded = 0;
+        for (const char **p = candidates; *p != NULL; ++p) {
+            if (err) { g_clear_error(&err); err = NULL; }
+            if (gtk_css_provider_load_from_path(provider, *p, &err)) {
+                GdkScreen *screen = gdk_screen_get_default();
+                gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+                g_message("Loaded UI stylesheet: %s", *p);
+                loaded = 1;
+                break;
+            } else {
+                if (err) {
+                    g_message("ui.css not found at %s: %s", *p, err->message);
+                }
+            }
+        }
+        if (!loaded) g_message("No ui.css loaded; using system theme.");
+        if (err) g_clear_error(&err);
+        g_object_unref(provider);
+    }
+
     // Attempt to auto-login from persisted last user id (if any)
     int last_id = read_last_user_id();
     if (last_id != -1) {
@@ -1010,12 +947,25 @@ void run_ui_app(Bibliotheque *bib) {
     gtk_container_add(GTK_CONTAINER(window), stack);
 
     // --- Login page (first view) ---
-    GtkWidget *login_page = gtk_grid_new();
+    GtkWidget *login_grid = gtk_grid_new();
     GtkWidget *e_email = gtk_entry_new(); GtkWidget *e_pass = gtk_entry_new(); gtk_entry_set_visibility(GTK_ENTRY(e_pass), FALSE);
-    gtk_grid_attach(GTK_GRID(login_page), gtk_label_new("Email:"), 0,0,1,1); gtk_grid_attach(GTK_GRID(login_page), e_email, 1,0,1,1);
-    gtk_grid_attach(GTK_GRID(login_page), gtk_label_new("Mot de passe:"), 0,1,1,1); gtk_grid_attach(GTK_GRID(login_page), e_pass, 1,1,1,1);
-    GtkWidget *btn = gtk_button_new_with_label("Se connecter"); gtk_grid_attach(GTK_GRID(login_page), btn, 1,2,1,1);
-    gtk_stack_add_named(GTK_STACK(stack), login_page, "login_page");
+    gtk_grid_set_row_spacing(GTK_GRID(login_grid), 8);
+    gtk_grid_set_column_spacing(GTK_GRID(login_grid), 8);
+    gtk_grid_attach(GTK_GRID(login_grid), gtk_label_new("Email:"), 0,0,1,1); gtk_grid_attach(GTK_GRID(login_grid), e_email, 1,0,1,1);
+    gtk_grid_attach(GTK_GRID(login_grid), gtk_label_new("Mot de passe:"), 0,1,1,1); gtk_grid_attach(GTK_GRID(login_grid), e_pass, 1,1,1,1);
+    GtkWidget *btn = gtk_button_new_with_label("Se connecter"); gtk_grid_attach(GTK_GRID(login_grid), btn, 1,2,1,1);
+    GtkWidget *btn_create = gtk_button_new_with_label("Créer un compte"); gtk_grid_attach(GTK_GRID(login_grid), btn_create, 1,3,1,1);
+
+    /* Center the login grid inside the stack */
+    GtkWidget *login_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_container_add(GTK_CONTAINER(login_box), login_grid);
+    gtk_widget_set_halign(login_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(login_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(login_box, TRUE);
+    gtk_widget_set_vexpand(login_box, TRUE);
+    /* style class for login panel */
+    gtk_style_context_add_class(gtk_widget_get_style_context(login_box), "login-box");
+    gtk_stack_add_named(GTK_STACK(stack), login_box, "login_page");
 
     // --- Main page (hidden until login) ---
     GtkWidget *main_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -1028,6 +978,8 @@ void run_ui_app(Bibliotheque *bib) {
     lctx->e_pass = GTK_ENTRY(e_pass);
     lctx->main_page = main_page;
     g_signal_connect(btn, "clicked", G_CALLBACK(on_login_clicked), lctx);
+    /* Connect "Créer un compte" to the dialog that creates a user; pass the main window as parent */
+    g_signal_connect(btn_create, "clicked", G_CALLBACK(on_create_account), window);
 
     // If we have a remembered user in RAM, auto-login without asking
     if (g_last_user) {
@@ -1036,9 +988,14 @@ void run_ui_app(Bibliotheque *bib) {
         gtk_stack_set_visible_child_name(GTK_STACK(stack), "main_page");
     }
 
-    // Show the window (stack will show the login page first)
+    // Set window fullscreen, show the window and choose the initial visible page
+    gtk_window_fullscreen(GTK_WINDOW(window));
     gtk_widget_show_all(window);
-    gtk_stack_set_visible_child_name(GTK_STACK(stack), "login_page");
+    if (g_last_user) {
+        gtk_stack_set_visible_child_name(GTK_STACK(stack), "main_page");
+    } else {
+        gtk_stack_set_visible_child_name(GTK_STACK(stack), "login_page");
+    }
     gtk_main();
 }
     // End of GTK UI implementation in this file.

@@ -22,7 +22,9 @@ add_executable(test main.c
         statistiques.c
         authentification.h
         authentification.c
-        ui.c)
+        ui.c
+        ui_helpers.c
+        ui_views.c)
 
 target_include_directories(test PRIVATE ${GTK3_INCLUDE_DIRS})
 foreach(_flag ${GTK3_CFLAGS_OTHER})

@@ -23,6 +23,9 @@ int enregistrer_retour(Bibliotheque *bib, int id_livre, int id_utilisateur);
  */
 Emprunt* rechercher_emprunt_actif(Bibliotheque *bib, int id_livre, int id_utilisateur);
 
+/* Recherche un emprunt par son ID (actif ou non) */
+Emprunt* rechercher_emprunt_par_id(Bibliotheque *bib, int id_emprunt);
+
 /**
  * Vérifie si un utilisateur peut emprunter (quota non dépassé)
  * Retourne 1 si oui, 0 sinon

@@ -312,6 +312,11 @@ int charger_tout(Bibliotheque *bib) {
 int sauvegarder_tout(Bibliotheque *bib) {
     if (!bib) return 0;
 
+    /* Recalcule les données dérivées avant sauvegarde pour garder la cohérence
+       (statut des livres, nombres d'emprunts actifs par utilisateur). */
+    recalculer_popularite_livres(bib);
+    recalculer_emprunts_actifs_utilisateurs(bib);
+
     if (!sauvegarder_livres(bib))        return 0;
     if (!sauvegarder_utilisateurs(bib))  return 0;
     if (!sauvegarder_emprunts(bib))      return 0;

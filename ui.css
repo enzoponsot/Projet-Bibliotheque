@@ -1,0 +1,150 @@
+/* ui.css — Very simple, GTK3-compatible dark theme with hover states */
+
+/* Global font */
+* {
+    font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Window background and text */
+window, .window {
+    background-color: #0b1220;
+    color: #e6eef8;
+}
+
+/* Header */
+headerbar {
+    background-color: #071025;
+    color: #e6eef8;
+    padding: 10px;
+}
+headerbar title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+/* Buttons */
+button, .button {
+    background-color: transparent;
+    color: #cfe8f0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    border: none;
+}
+.nav-button, .nav-item {
+    padding: 8px 10px;
+}
+
+/* Hover state: simple background color change */
+button:hover, .button:hover, .nav-button:hover, .nav-item:hover {
+    background-color: rgba(230,238,248,0.03);
+    color: #e6eef8;
+}
+
+/* Primary accent */
+.button.primary, .suggested-action, .primary {
+    background-color: #0ea5a4;
+    color: #041014;
+}
+.button.primary:hover, .primary:hover {
+    background-color: #0ca7a5;
+}
+
+/* Inputs */
+entry, combobox, spinbutton {
+    background-color: #071025;
+    color: #e6eef8;
+    border: 1px solid rgba(230,238,248,0.06);
+    padding: 6px;
+    border-radius: 6px;
+}
+
+/* TreeView */
+treeview, .treeview {
+    background-color: #071025;
+    color: #e6eef8;
+}
+treeview row:hover, .treeview row:hover {
+    background-color: rgba(230,238,248,0.03);
+}
+treeview view:selected, .treeview view:selected {
+    background-color: rgba(14,165,164,0.08);
+    color: #e6eef8;
+}
+
+/* Section labels */
+.label.section {
+    font-weight: 600;
+    color: #e6eef8;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(230,238,248,0.03);
+    margin-bottom: 8px;
+}
+
+/* Dialogs and status */
+dialog {
+    background-color: #071025;
+    color: #e6eef8;
+    border-radius: 8px;
+}
+.info, .small-muted {
+    color: rgba(230,238,248,0.7);
+    font-size: 11px;
+}
+
+/* End of minimal stylesheet */
+
+/* --- Additional UI polish --- */
+
+/* Login form container: subtle panel with border and padding */
+.login-box {
+    background-color: #0f1724; /* slightly lighter than page bg */
+    border: 1px solid rgba(230,238,248,0.04);
+    padding: 20px;
+    border-radius: 10px;
+    min-width: 360px;
+}
+
+/* Increase main typography for clarity */
+headerbar title {
+    font-size: 20px;
+    font-weight: 700;
+}
+/* page title displayed above content */
+.page-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e6eef8;
+}
+/* nav title (sidebar) */
+.nav-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #e6eef8;
+}
+
+/* user info block in sidebar */
+.user-info {
+    font-size: 13px;
+    color: rgba(230,238,248,0.95);
+}
+
+/* Slightly larger base labels for readability */
+label, .label {
+    font-size: 13px;
+}
+
+/* Make nav buttons clearer when hovered */
+.nav-button:hover {
+    background-color: rgba(14,165,164,0.06);
+    color: #e6eef8;
+}
+
+/* Reduce visual clutter in the main list area */
+.treeview column {
+    padding: 10px 8px;
+    font-size: 12px;
+}
+
+/* End polish */
+
+

@@ -127,6 +127,14 @@ Emprunt* rechercher_emprunt_actif(Bibliotheque *bib, int id_livre, int id_utilis
     return NULL;
 }
 
+Emprunt* rechercher_emprunt_par_id(Bibliotheque *bib, int id_emprunt) {
+    if (!bib) return NULL;
+    for (int i = 0; i < bib->nombre_emprunts; ++i) {
+        if (bib->emprunts[i].id == id_emprunt) return &bib->emprunts[i];
+    }
+    return NULL;
+}
+
 int peut_emprunter(Bibliotheque *bib, int id_utilisateur) {
     Utilisateur *utilisateur = rechercher_utilisateur_par_id(bib, id_utilisateur);
     if (utilisateur == NULL) {
